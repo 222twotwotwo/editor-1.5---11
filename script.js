@@ -1,23 +1,52 @@
-/* ================= Markdown + 高亮 ================= */
+/* ================= Markdown + 高亮（修复版） ================= */
+
+// 等待DOM加载完成
+document.addEventListener('DOMContentLoaded', function() {
+  // 初始化highlight.js
+  hljs.configure({
+    tabReplace: '  ',
+    classPrefix: 'hljs-',
+    languages: ['javascript', 'python', 'java', 'css', 'html', 'xml']
+  });
+});
 
 const md = window.markdownit({
   html: true,
   linkify: true,
   typographer: true,
-  highlight: (str, lang) => {
+  highlight: function(str, lang) {
     if (lang && hljs.getLanguage(lang)) {
-      return `<pre class="hljs"><code>${hljs.highlight(str, { language: lang }).value}</code></pre>`;
+      try {
+        return '<pre class="hljs"><code>' +
+               hljs.highlight(str, { 
+                 language: lang, 
+                 ignoreIllegals: true 
+               }).value +
+               '</code></pre>';
+      } catch (__) {
+        console.warn(`高亮错误 (${lang}):`, __);
+      }
     }
-    return `<pre class="hljs"><code>${md.utils.escapeHtml(str)}</code></pre>`;
+    return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>';
   }
 });
 
 const editor = document.getElementById('editor');
 const preview = document.getElementById('preview');
 
+// 修复的renderPreview函数
 function renderPreview() {
-  preview.innerHTML = md.render(editor.value);
+  const markdownContent = editor.value;
+  preview.innerHTML = md.render(markdownContent);
+  
+  // 关键修复：手动重新高亮所有代码块
+  setTimeout(() => {
+    preview.querySelectorAll('pre code').forEach((block) => {
+      hljs.highlightElement(block);
+    });
+  }, 0);
 }
+
 editor.addEventListener('input', () => {
   renderPreview();
   playEditSound();
@@ -39,13 +68,17 @@ function setTheme(theme) {
   themeToggle.textContent = dark ? '☀️' : '🌙';
 }
 
-setTheme(localStorage.getItem('theme') || 'dark');
+setTheme(localStorage.getItem('theme') || 'light');
 
 themeToggle.onclick = () => {
   setTheme(
     document.documentElement.getAttribute('data-theme') === 'dark'
       ? 'light' : 'dark'
   );
+  // 修复主题切换时的高亮问题
+  setTimeout(() => {
+    renderPreview(); // 重新渲染确保高亮生效
+  }, 100);
 };
 
 /* ================= 左侧侧边栏控制 ================= */
@@ -98,7 +131,6 @@ deleteFileBtn.addEventListener('click', () => {
   // 显式调用删除当前文件
   deleteFile(fileSystem.currentFile);
 });
-
 
 const fileNameInput = document.getElementById('fileNameInput');
 const importFileBtn = document.getElementById('importFileBtn');
@@ -304,7 +336,6 @@ function setRightSidebar(collapsed) {
 }
 
 // 右侧侧边栏事件监听
-
 saveFileBtn.addEventListener('click', saveFile);
 deleteFileBtn.addEventListener('click', deleteFile);
 importFileBtn.addEventListener('click', importFile);
@@ -491,21 +522,21 @@ function updateStats() {
   }
 }
 
-/* ================= 代码高亮颜色自定义 ================= */
+/* ================= 代码高亮颜色自定义（修复版） ================= */
 
-// 定义可自定义的语法元素
+// 修复语法元素定义（添加正确的语言标签）
 const syntaxElements = [
-  { id: 'keyword', name: '关键字' },
-  { id: 'variable', name: '变量名' },
-  { id: 'string', name: '字符串' },
-  { id: 'number', name: '数字' },
-  { id: 'comment', name: '注释' },
-  { id: 'function', name: '函数名' },
-  { id: 'class', name: '类名' },
-  { id: 'meta', name: '元数据' },
-  { id: 'built_in', name: '内置类型' },
-  { id: 'punctuation', name: '标点符号' },
-  { id: 'operator', name: '运算符' }
+  { id: 'keyword', name: '关键字', languages: ['js', 'java', 'python', 'cpp'] },
+  { id: 'variable', name: '变量名', languages: ['js', 'python', 'java'] },
+  { id: 'string', name: '字符串', languages: ['所有语言'] },
+  { id: 'number', name: '数字', languages: ['所有语言'] },
+  { id: 'comment', name: '注释', languages: ['所有语言'] },
+  { id: 'title.function_', name: '函数名', languages: ['js', 'python'] },
+  { id: 'class', name: '类名', languages: ['java', 'python', 'cpp'] },
+  { id: 'meta', name: '元数据', languages: ['html', 'xml'] },
+  { id: 'built_in', name: '内置类型', languages: ['python', 'js'] },
+  { id: 'punctuation', name: '标点符号', languages: ['所有语言'] },
+  { id: 'operator', name: '运算符', languages: ['所有语言'] }
 ];
 
 // 默认颜色配置
@@ -516,7 +547,7 @@ const defaultColors = {
     string: '#F0A898',
     number: '#88E888',
     comment: '#78C878',
-    function: '#F8D878',
+    'title.function_': '#F8D878',
     class: '#98D8F8',
     meta: '#FF9878',
     built_in: '#88C8F8',
@@ -529,7 +560,7 @@ const defaultColors = {
     string: '#E59866',
     number: '#98C379',
     comment: '#72B865',
-    function: '#E5E58A',
+    'title.function_': '#E5E58A',
     class: '#56D9B9',
     meta: '#FF9878',
     built_in: '#88C8F8',
@@ -537,68 +568,6 @@ const defaultColors = {
     operator: '#D8D8F8'
   }
 };
-
-// 初始化颜色设置面板
-function initColorSettings() {
-  const colorSettings = document.getElementById('colorSettings');
-  const userColors = getUserColors();
-  
-  syntaxElements.forEach(element => {
-    const theme = document.documentElement.getAttribute('data-theme');
-    const defaultColor = defaultColors[theme][element.id];
-    const currentColor = userColors[theme][element.id] || defaultColor;
-    
-    const settingDiv = document.createElement('div');
-    settingDiv.className = 'color-setting';
-    settingDiv.innerHTML = `
-      <label for="${element.id}Color">${element.name}</label>
-      <div class="color-input-group">
-        <input type="color" id="${element.id}Color" value="${currentColor}">
-        <input type="text" id="${element.id}ColorHex" value="${currentColor}">
-      </div>
-    `;
-    
-    colorSettings.appendChild(settingDiv);
-    
-    // 绑定颜色选择事件
-    const colorInput = document.getElementById(`${element.id}Color`);
-    const hexInput = document.getElementById(`${element.id}ColorHex`);
-    
-    colorInput.addEventListener('input', () => {
-      hexInput.value = colorInput.value;
-      saveColorSetting(element.id, colorInput.value);
-      applyColorSettings();
-    });
-    
-    hexInput.addEventListener('input', () => {
-      if (/^#[0-9A-F]{6}$/i.test(hexInput.value)) {
-        colorInput.value = hexInput.value;
-        saveColorSetting(element.id, hexInput.value);
-        applyColorSettings();
-      }
-    });
-  });
-  
-  // 绑定重置按钮事件
-  document.getElementById('resetColorsBtn').addEventListener('click', () => {
-    if (confirm('确定要重置为默认颜色吗？')) {
-      localStorage.removeItem('customHighlightColors');
-      // 清空现有设置
-      document.getElementById('colorSettings').innerHTML = '';
-      initColorSettings();
-      applyColorSettings();
-    }
-  });
-  
-  // 主题切换时更新颜色设置
-  themeToggle.addEventListener('click', () => {
-    setTimeout(() => {
-      // 等待主题切换完成
-      document.getElementById('colorSettings').innerHTML = '';
-      initColorSettings();
-    }, 0);
-  });
-}
 
 // 获取用户颜色设置
 function getUserColors() {
@@ -619,78 +588,108 @@ function saveColorSetting(elementId, color) {
   localStorage.setItem('customHighlightColors', JSON.stringify(userColors));
 }
 
-// 应用颜色设置
-// 应用颜色设置
+// 修复初始化函数
+function initColorSettings() {
+  const colorSettings = document.getElementById('colorSettings');
+  const userColors = getUserColors();
+  const theme = document.documentElement.getAttribute('data-theme');
+  
+  colorSettings.innerHTML = '';
+  
+  syntaxElements.forEach(element => {
+    const defaultColor = defaultColors[theme][element.id];
+    const currentColor = userColors[theme][element.id] || defaultColor;
+    
+    const settingDiv = document.createElement('div');
+    settingDiv.className = 'color-setting';
+    settingDiv.innerHTML = `
+      <div class="color-setting-row">
+        <span class="color-setting-label">${element.name}</span>
+        <div class="color-picker-container">
+          <div class="color-preview" style="background-color: ${currentColor};" 
+               id="${element.id}Preview"></div>
+          <input type="color" class="color-picker" id="${element.id}Color" value="${currentColor}">
+        </div>
+      </div>
+      <div class="language-tags-row">
+        ${element.languages.map(lang => `<span class="language-tag">${lang}</span>`).join('')}
+      </div>
+    `;
+    
+    colorSettings.appendChild(settingDiv);
+    
+    const colorInput = document.getElementById(`${element.id}Color`);
+    const previewElement = document.getElementById(`${element.id}Preview`);
+    
+    colorInput.addEventListener('input', () => {
+      previewElement.style.backgroundColor = colorInput.value;
+      saveColorSetting(element.id, colorInput.value);
+      applyColorSettings();
+    });
+  });
+  
+  // 重置按钮事件
+  const resetBtn = document.getElementById('resetColorsBtn');
+  resetBtn.onclick = () => {
+    if (confirm('确定要重置为默认颜色吗？')) {
+      localStorage.removeItem('customHighlightColors');
+      initColorSettings();
+      applyColorSettings();
+    }
+  };
+}
+
+// 修复应用颜色设置函数
 function applyColorSettings() {
   const userColors = getUserColors();
   const theme = document.documentElement.getAttribute('data-theme');
   
-  // 移除已存在的自定义样式
   const existingStyle = document.getElementById('customHighlightStyles');
-  if (existingStyle) {
-    existingStyle.remove();
-  }
+  if (existingStyle) existingStyle.remove();
   
-  // 创建新的样式元素
   const style = document.createElement('style');
   style.id = 'customHighlightStyles';
   
   let css = '';
   syntaxElements.forEach(element => {
     const color = userColors[theme][element.id] || defaultColors[theme][element.id];
+    const selector = element.id.includes('.') 
+      ? `.hljs-${element.id.split('.')[0]}.hljs-${element.id.split('.')[1]}`
+      : `.hljs-${element.id}`;
     
-    // 为函数名生成多个可能的CSS选择器，确保覆盖所有语言
-    if (element.id === 'function') {
-      // 同时覆盖多种可能的函数名类名
-      css += `[data-theme="${theme}"] .hljs-function { color: ${color} !important; }\n`;
-      css += `[data-theme="${theme}"] .hljs-title.function_ { color: ${color} !important; }\n`;
-      css += `[data-theme="${theme}"] .hljs-title { color: ${color} !important; }\n`;
-      css += `[data-theme="${theme}"] .hljs-name { color: ${color} !important; }\n`;
-    }
-    // 为标点符号生成多个可能的CSS选择器
-    else if (element.id === 'punctuation') {
-      // 同时覆盖多种可能的标点符号类名
-      css += `[data-theme="${theme}"] .hljs-punctuation { color: ${color} !important; }\n`;
-      css += `[data-theme="${theme}"] .hljs-operator { color: ${color} !important; }\n`;
-      css += `[data-theme="${theme}"] .hljs-symbol { color: ${color} !important; }\n`;
-    }
-    // 为变量名生成多个可能的CSS选择器
-    else if (element.id === 'variable') {
-      // 同时覆盖多种可能的变量名类名
-      css += `[data-theme="${theme}"] .hljs-variable { color: ${color} !important; }\n`;
-      css += `[data-theme="${theme}"] .hljs-variable.language_ { color: ${color} !important; }\n`;
-      css += `[data-theme="${theme}"] .hljs-params { color: ${color} !important; }\n`;
-      css += `[data-theme="${theme}"] .hljs-attr { color: ${color} !important; }\n`;
-    }
-    // 为类名生成多个可能的CSS选择器
-    else if (element.id === 'class') {
-      // 同时覆盖多种可能的类名类名
-      css += `[data-theme="${theme}"] .hljs-class { color: ${color} !important; }\n`;
-      css += `[data-theme="${theme}"] .hljs-title.class_ { color: ${color} !important; }\n`;
-      css += `[data-theme="${theme}"] .hljs-type { color: ${color} !important; }\n`;
-      css += `[data-theme="${theme}"] .hljs-built_in { color: ${color} !important; }\n`;
-      css += `[data-theme="${theme}"] .hljs-selector-class { color: ${color} !important; }\n`;
-    }
-    // 为其他元素生成CSS选择器
-    else {
-      css += `[data-theme="${theme}"] .hljs-${element.id} { color: ${color} !important; }\n`;
-    }
+    css += `#preview ${selector} { color: ${color} !important; }\n`;
   });
   
   style.textContent = css;
   document.head.appendChild(style);
   
-  // 重新渲染预览以应用新样式
+  // 重新高亮
   renderPreview();
 }
 
-/* 初始化 */
+// 修复初始化顺序
 function init() {
+  // 先初始化highlight.js
+  hljs.highlightAll();
+  
   updateStats();
   renderPreview();
   initFileSystem();
-  initColorSettings(); // 添加颜色设置初始化
-  applyColorSettings(); // 应用颜色设置
+  initColorSettings();
+  applyColorSettings();
 }
 
-init();
+// 确保页面加载完成后初始化
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+
+// 主题切换时更新颜色设置
+themeToggle.addEventListener('click', () => {
+  setTimeout(() => {
+    initColorSettings();
+    applyColorSettings();
+  }, 0);
+});
